@@ -2,9 +2,6 @@ Dead Space 1 PC Save Fixer
 
 fix Dead Space 1 PC Saves after manual editing
 
-Requirements:
-.NET Framework 4.0 or Newer
-
 code by 
 https://gist.github.com/Experiment5X/5025310
 with hints from
