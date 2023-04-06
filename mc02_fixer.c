@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <windows.h> // for BOOL
+#include <string.h> // for strcmp
 
 typedef unsigned long DWORD;
 typedef unsigned char BYTE;
@@ -89,8 +91,11 @@ DWORD MC02(const BYTE *pb, DWORD cb)
 	return ~seedValue;
 }
 
+BOOL LE;
+
 DWORD FlipDword(DWORD dw)
 {
+    if (LE) return dw;
     DWORD toReturn = 0;
 
     toReturn |= (dw >> 24);
@@ -117,10 +122,12 @@ void WriteDword(FILE *file, DWORD dw)
     fwrite(&dw, 4, 1, file);
 }
 
+DWORD base;
+
 void ReadHeader(FILE *file, MC02_Header *header)
 {
     // seek to the beginning of the file
-    fseek(file, 0, SEEK_SET);
+    fseek(file, 0 + base, SEEK_SET);
 
     header->magic = ReadDword(file);
     header->fileLength = ReadDword(file);
@@ -134,7 +141,7 @@ void ReadHeader(FILE *file, MC02_Header *header)
 void WriteHeader(FILE *file, MC02_Header *header)
 {
     // seek to the beginning of the file
-    fseek(file, 0, SEEK_SET);
+    fseek(file, 0 + base, SEEK_SET);
 
     WriteDword(file, header->magic);
     WriteDword(file, header->fileLength);
@@ -145,11 +152,20 @@ void WriteHeader(FILE *file, MC02_Header *header)
     WriteDword(file, header->checksum2);
 }
 
+void Pause()
+{
+//printf("Press enter to continue...\n"); getchar();
+system("pause");
+}
+
 int main(int argc, char *argv[])
 {
+    printf("info: https://github.com/r3sus/ds1savefix\n");
+
     if (argc != 2)
     {
-        printf("Usage: mc02_fixer savePath\n");
+        printf("Usage: `mc02_fixer savePath` (or drag and drop save on exe)\n");
+        Pause();
         return -1;
     }
 
@@ -157,31 +173,56 @@ int main(int argc, char *argv[])
 
     FILE *save = fopen(argv[1], "rb+");
 
+    char temp [4];    
+    fread(&temp, 1, 4, save);    
+    //fread(&temp, sizeof(temp[0]), sizeof(temp), save);
+    //printf("%s\n",temp);
+    base = 0;
+
+    if (strcmp(temp,"RGMH") == 0)
+    {                           
+    base = 0x2834;
+    fseek(save, 0 + base, SEEK_SET);
+    fread(&temp, 1, 4, save);    
+    }
+
+    //printf("%s\n",temp);
+    
+    if (strcmp(temp,"MC02") == 0)
+    {
+    LE = !TRUE;
+    }
+    else if (strcmp(temp,"20CM") == 0)
+    {
+    LE = TRUE;
+    }
+    else
+    {
+    printf("Invalid MC02 magic.\n");
+    //printf("Save File NOT supported.\n");
+    Pause();    
+    return -1;
+    }
+    
     MC02_Header header;
     ReadHeader(save, &header);
-
-    // verify the magic
-    if (header.magic != 0x4D433032)
-    {
-        printf("Invalid MC02 magic.\n");
-        return -1;
-    }
 
     // verify the lengths
     if (header.fileLength != (header.checksum0Length + header.checksum1Length + 0x1C))
     {
         printf("Size mismatch.\n");
+        Pause();
         return -1;
     }
 
     // read in the header as a buffer for hashing later
-    fseek(save, 0, SEEK_SET);
+    fseek(save, 0 + base, SEEK_SET);
     fread(headerBuff, 1, 0x18, save);
 
     // fix the first checksum
     BYTE *checksum0Buffer = malloc(header.checksum0Length);
 
-    fseek(save, 0x1C, SEEK_SET);
+    fseek(save, 0x1C + base, SEEK_SET);
     fread(checksum0Buffer, 1, header.checksum0Length, save);
     header.checksum0 = MC02(checksum0Buffer, header.checksum0Length);
 
@@ -207,6 +248,6 @@ int main(int argc, char *argv[])
     fclose(save);
 
     printf("Checksums fixed.\n");
-
+    Pause();
     return 0;
 }
