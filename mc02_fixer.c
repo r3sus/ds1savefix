@@ -2,8 +2,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <windows.h> // for BOOL
-#include <string.h> // for strcmp
+#include <windows.h> 
+#include <string.h> 
+#include <conio.h>
+
 
 typedef unsigned long DWORD;
 typedef unsigned char BYTE;
@@ -154,17 +156,17 @@ void WriteHeader(FILE *file, MC02_Header *header)
 
 void Pause()
 {
-//printf("Press enter to continue...\n"); getchar();
-system("pause");
+	printf("Press Any Key. "); getch();
+	//system("pause");
 }
 
 int main(int argc, char *argv[])
 {
-    printf("info: https://github.com/r3sus/ds1savefix\n");
+    printf("i: Info: https://github.com/r3sus/ds1savefix\n");
 
     if (argc != 2)
     {
-        printf("Usage: `mc02_fixer savePath` (or drag and drop save on exe)\n");
+        printf("Usage: `mc02_fixer savePath` (drag and drop save on exe)\n");
         Pause();
         return -1;
     }
@@ -173,26 +175,29 @@ int main(int argc, char *argv[])
 
     FILE *save = fopen(argv[1], "rb+");
 
-    char temp [4];    
-    fread(&temp, 1, 4, save);    
-    //fread(&temp, sizeof(temp[0]), sizeof(temp), save);
-    //printf("%s\n",temp);
+    DWORD temp, dw1;
+    fread(&temp, 4, 1, save);
+
     base = 0;
 
-    if (strcmp(temp,"RGMH") == 0)
-    {                           
-    base = 0x2834;
-    fseek(save, 0 + base, SEEK_SET);
-    fread(&temp, 1, 4, save);    
+    BOOL GF2 = FALSE;
+
+    if (temp == 0x484D4752)
+    {
+        base = 0x2834;
+        fseek(save, 0 + base, SEEK_SET);
+        fread(&temp, 4, 1, save);
+
+        fseek(save, 0x134 + base, SEEK_SET);
+        fread(&dw1, 4, 1, save);
+        GF2 = dw1 == 0x87E03A5D;
     }
 
-    //printf("%s\n",temp);
-    
-    if (strcmp(temp,"MC02") == 0)
+    if (temp == 0x3230434D)
     {
     LE = !TRUE;
     }
-    else if (strcmp(temp,"20CM") == 0)
+    else if (temp == 0x4D433032)
     {
     LE = TRUE;
     }
@@ -213,6 +218,66 @@ int main(int argc, char *argv[])
         printf("Size mismatch.\n");
         Pause();
         return -1;
+    }
+
+    if (GF2)
+    {
+
+        void name_io(char w)
+        {
+            wchar_t nmsd[100];
+            DWORD nmps = 0x2034;
+            fseek(save, nmps, SEEK_SET);
+            //if (mode=='r')    
+            if (w == 1)
+            {
+                printf("Enter New Name: "); _getws(nmsd);
+                fwrite(nmsd, 2, 50, save);
+                wprintf(L"n: Name: %s\n", nmsd);
+            }
+            else
+            {
+                fgetws(nmsd, 100, save); wprintf(L"n: Name: %s\n", nmsd);
+            }
+            return;
+        }
+
+        void bd_io(char w)
+        {
+            DWORD adr = base + 0x144; char d = 0; //,c = 1;
+            fseek(save, adr, SEEK_SET);
+            fread(&d, 1, 1, save);
+            BOOL bd = !(d == 1 || d < 0);
+            char c1[10];
+
+            if (w == 1)
+            {
+                d = bd ? 1 : 0; bd = !bd;
+                fseek(save, -1, SEEK_CUR);
+                fwrite(&d, 1, 1, save);
+            }
+
+            {
+                strcpy(c1, "OFF");
+                if (bd) strcpy(c1, "ON");
+                printf("b: Beta: Dominic %s\n", c1);
+            }
+            return;
+        }
+
+        name_io(0);
+        bd_io(0);
+        printf("!: Enter literal to edit | n/b | x to exit. \n");
+
+        char b1 = 0;
+
+        while (1)
+        {
+            b1 = 0; b1 = getch();
+            if (b1 == 'x') break;
+            if (b1 == 'n') name_io(1); 
+            if (b1 == 'b') bd_io(1);
+        }
     }
 
     // read in the header as a buffer for hashing later

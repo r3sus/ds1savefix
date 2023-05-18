@@ -2,11 +2,16 @@
 
 ## 1
 
-fix save file checksums of
+Features:
+1. Fix save files after manual hex editing for:
 - Dead Space 1
 - Godfather 1/2   
 
-Usage: `mc02_fixer savePath` (or drag and drop save on exe).
+2. Basic Save Editing for Godfather 2:
+- Change Save's Title - visible in-game name. 
+- Toggle Beta Dominic Appearance. 
+
+Usage: `mc02_fixer savePath` (drag and drop save on exe).
 
 ## 2
 
