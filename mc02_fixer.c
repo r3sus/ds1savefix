@@ -93,11 +93,19 @@ DWORD MC02(const BYTE *pb, DWORD cb)
 	return ~seedValue;
 }
 
-BOOL LE;
-
+byte PC;
+/*
+DWORD 4b2d(char *4bs)
+{
+	byte 4b[4];
+	sscanf(4bs,"%x %x %x %x",4b[0],4b[1],4b[2],4b[3]);
+	DWORD dw = (DWORD)4b;
+	return dw;
+}
+*/
 DWORD FlipDword(DWORD dw)
 {
-    if (LE) return dw;
+    if (PC) return dw;
     DWORD toReturn = 0;
 
     toReturn |= (dw >> 24);
@@ -106,6 +114,21 @@ DWORD FlipDword(DWORD dw)
     toReturn |= (dw << 24);
 
     return toReturn;
+}
+
+float ReverseFloat( const float inFloat )
+{
+   float retVal;
+   char *floatToConvert = ( char* ) & inFloat;
+   char *returnFloat = ( char* ) & retVal;
+
+   // swap the bytes into a temporary buffer
+   returnFloat[0] = floatToConvert[3];
+   returnFloat[1] = floatToConvert[2];
+   returnFloat[2] = floatToConvert[1];
+   returnFloat[3] = floatToConvert[0];
+
+   return retVal;
 }
 
 DWORD ReadDword(FILE *file)
@@ -124,7 +147,46 @@ void WriteDword(FILE *file, DWORD dw)
     fwrite(&dw, 4, 1, file);
 }
 
+char*path;
+
 DWORD base;
+
+void fwriteE(void*buf,size_t sz,size_t num,FILE*file,byte LE)
+{
+	if (LE) {fwrite(buf,sz,num,file);return;}
+for (byte n = 0;n<num;n++)
+for (byte b = 0;b<sz;b++)
+fwrite(buf+n*sz+sz-1-b,1,1,file);
+}
+
+void freadE(void*buf,size_t sz,size_t num,FILE*file,byte LE)
+{
+	if (LE) {fread(buf,sz,num,file);return;}
+byte bar[sz*num];
+fread(bar,sz,num,file);
+//byte bar[sz];
+for (byte n = 0;n<num;n++)
+for (byte b = 0;b<sz;b++)
+*(byte*)(buf + n*sz+ b) = bar[n*sz+sz-1-b];
+}
+
+DWORD fscandw(DWORD dw,FILE*save,DWORD start,size_t sz,byte LE)
+	{
+		//printf("%X found\n",start);
+		fseek(save, start, SEEK_SET);
+		byte b1,b2;
+		for (byte b=0;b<sz;b++)
+		{
+			DWORD d1;
+			freadE(&d1, 4, 1, save, PC);
+			b1 = (d1 == dw); 
+			if (b1) break;
+			//{printf("%X found\n",dw);break;}
+		}
+		if (!b1) {printf("%X not found\n",dw);return 0;}
+		return ftell(save)-4;
+	}
+
 
 void ReadHeader(FILE *file, MC02_Header *header)
 {
@@ -156,129 +218,39 @@ void WriteHeader(FILE *file, MC02_Header *header)
 
 void Pause()
 {
-	printf("Press Any Key. "); getch();
+	printf("- Press Any Key. \n"); getch();
 	//system("pause");
 }
 
-int main(int argc, char *argv[])
+DWORD base;
+
+byte ui=1>0,bdt,qod,lo;
+
+int mc02(int argc, char *argv[])
 {
-    printf("i: Info: https://github.com/r3sus/ds1savefix\n");
+if ((long)base<0) return 0;
+FILE *save = fopen(path, "rb+");
+if (!save) return 0;
+fseek(save, 0 + base, SEEK_SET);
+DWORD temp = ReadDword(save);
+if (temp != 0x4D433032) {
+	printf("Invalid MC02 magic.\n");
+	return -1;
+}
 
-    if (argc != 2)
-    {
-        printf("Usage: `mc02_fixer savePath` (drag and drop save on exe)\n");
-        Pause();
-        return -1;
-    }
+BYTE headerBuff[0x18];
 
-    BYTE headerBuff[0x18];
+MC02_Header header;
+ReadHeader(save, &header);
 
-    FILE *save = fopen(argv[1], "rb+");
+// verify the lengths
+if (header.fileLength != (header.checksum0Length + header.checksum1Length + 0x1C))
+{
+	printf("Size mismatch.\n");
+	Pause();
+	return -1;
+}
 
-    DWORD temp, dw1;
-    fread(&temp, 4, 1, save);
-
-    base = 0;
-
-    BOOL GF2 = FALSE;
-
-    if (temp == 0x484D4752)
-    {
-        base = 0x2834;
-        fseek(save, 0 + base, SEEK_SET);
-        fread(&temp, 4, 1, save);
-
-        fseek(save, 0x134 + base, SEEK_SET);
-        fread(&dw1, 4, 1, save);
-        GF2 = dw1 == 0x87E03A5D;
-    }
-
-    if (temp == 0x3230434D)
-    {
-    LE = !TRUE;
-    }
-    else if (temp == 0x4D433032)
-    {
-    LE = TRUE;
-    }
-    else
-    {
-    printf("Invalid MC02 magic.\n");
-    //printf("Save File NOT supported.\n");
-    Pause();    
-    return -1;
-    }
-    
-    MC02_Header header;
-    ReadHeader(save, &header);
-
-    // verify the lengths
-    if (header.fileLength != (header.checksum0Length + header.checksum1Length + 0x1C))
-    {
-        printf("Size mismatch.\n");
-        Pause();
-        return -1;
-    }
-
-    if (GF2)
-    {
-
-        void name_io(char w)
-        {
-            wchar_t nmsd[100];
-            DWORD nmps = 0x2034;
-            fseek(save, nmps, SEEK_SET);
-            //if (mode=='r')    
-            if (w == 1)
-            {
-                printf("Enter New Name: "); _getws(nmsd);
-                fwrite(nmsd, 2, 50, save);
-                wprintf(L"n: Name: %s\n", nmsd);
-            }
-            else
-            {
-                fgetws(nmsd, 100, save); wprintf(L"n: Name: %s\n", nmsd);
-            }
-            return;
-        }
-
-        void bd_io(char w)
-        {
-            DWORD adr = base + 0x144; char d = 0; //,c = 1;
-            fseek(save, adr, SEEK_SET);
-            fread(&d, 1, 1, save);
-            BOOL bd = !(d == 1 || d < 0);
-            char c1[10];
-
-            if (w == 1)
-            {
-                d = bd ? 1 : 0; bd = !bd;
-                fseek(save, -1, SEEK_CUR);
-                fwrite(&d, 1, 1, save);
-            }
-
-            {
-                strcpy(c1, "OFF");
-                if (bd) strcpy(c1, "ON");
-                printf("b: Beta: Dominic %s\n", c1);
-            }
-            return;
-        }
-
-        name_io(0);
-        bd_io(0);
-        printf("!: Enter literal to edit | n/b | x to exit. \n");
-
-        char b1 = 0;
-
-        while (1)
-        {
-            b1 = 0; b1 = getch();
-            if (b1 == 'x') break;
-            if (b1 == 'n') name_io(1); 
-            if (b1 == 'b') bd_io(1);
-        }
-    }
 
     // read in the header as a buffer for hashing later
     fseek(save, 0 + base, SEEK_SET);
@@ -313,6 +285,521 @@ int main(int argc, char *argv[])
     fclose(save);
 
     printf("Checksums fixed.\n");
-    Pause();
+    //if (!qod) Pause();
     return 0;
+}
+
+int gf2se(int argc, char *argv[])
+{
+	FILE *save = fopen(path, "rb+");
+	fseek(save, 0x134 + base, SEEK_SET);
+	if (ReadDword(save) != 0x87E03A5D)
+    {
+		printf("%s\n","not gf2. ");
+        return -1;
+    }
+
+    void money_io(char w)
+    {
+	//if (!PC) {if (w == 1)printf("PC only, sry");return;}
+    float mon; 
+    DWORD mnps = 0x1624;        
+    fseek(save, mnps+base, SEEK_SET);
+    if (w)
+        {
+            char mns[100];
+            printf("!: Input Credits: "); gets(mns);
+            mon = atof(mns);
+			//if (!PC) mon = ReverseFloat(mon);
+            //printf("c: New Cash: %.0f\n", mon);
+            fwriteE(&mon, 4, 1, save,PC);                
+        }
+        else
+        {
+            freadE(&mon, 4, 1, save, 4);
+			//if (!PC) mon = ReverseFloat(mon);
+            
+        }
+    printf("m: Money: %.0f\n", mon);   
+    }
+
+    void name_io(char w)
+    {
+		if (!PC) {if (w == 1) printf("PC only");return;}
+        wchar_t nmsd[100];
+        DWORD nmps = 0x2034;
+        fseek(save, nmps, SEEK_SET);
+        //if (mode=='r')    
+        if (w == 1)
+        {
+            printf("Input New Name: "); _getws(nmsd);
+            fwrite(nmsd, 2, 50, save);
+            wprintf(L"n: Name: %s\n", nmsd);
+        }
+        else
+        {
+            fgetws(nmsd, 100, save); wprintf(L"n: Name: %s\n", nmsd);
+        }
+        return;
+    }
+
+    void bd_io(char w)
+    {
+        DWORD adr = base + 0x144, dw1;
+        fseek(save, adr, SEEK_SET);
+        		
+		dw1 = ReadDword(save);
+        byte on = dw1 == 0;
+        char c1[10];
+
+        if (w == 1)
+        {
+            on = !on; dw1 = on ? 0 : 1; 
+            fseek(save, adr, SEEK_SET);
+            WriteDword(save, dw1);
+        }
+
+        {
+            strcpy(c1, "OFF");
+            if (on) strcpy(c1, "ON");
+            printf("b: Beta: Dominic %s\n", c1);
+        }
+        return;
+    }
+
+    void tc_io(char w)
+    {
+        DWORD adr = base + 0x14FC+0x130; //0x162C
+		byte bar[4];
+        fseek(save, adr, SEEK_SET);
+		freadE(&bar, 1, 4, save, PC);
+        byte on = bar[0] == 1;
+
+        if (w == 1)
+        {
+            on = !on; bar[0] = on ? 1 : 0; 
+            fseek(save, adr, SEEK_SET);
+            fwriteE(&bar, 1, 4, save, PC);
+			//WriteDword(save, dw1);
+        }
+
+        {
+            /*strcpy(c1, "OFF");
+            if (on) strcpy(c1, "ON");*/
+            printf("t: TC: Cipolla: %s\n", on?"ON":"OFF");
+        }
+        return;
+    }
+	
+	DWORD adr_mp = base + 0x14FC-4+0x130; /*3E5C*/
+	void lic(byte w)
+	{
+        fseek(save, adr_mp, SEEK_SET);
+		DWORD num = ReadDword(save),sum=0;
+		byte b1 = PC ? 0 : 3,b2;
+		
+		fseek(save, 20, SEEK_CUR);
+		if (w)
+		{
+		printf("!: Input License Level (0-255). 0 - None. 4 - Master.\n"); //* to cancel. \n
+			b2 = getch()-'0';
+			//scanf("%i", &b2);
+		}
+		for (byte b = 0;b<num;b++)
+		{
+			fseek(save, 6*4+16+b1, SEEK_CUR);
+		
+		if (w)
+			fwrite(&b2, 1, 1, save);
+		else
+		{
+			fread(&b2, 1, 1, save);
+		}
+		
+		sum += b2;
+		//printf("%x ",ftell(save));
+			fseek(save, 4-b1-1, SEEK_CUR);
+		}		
+		//printf("l: license overriden for %i mobs\n",num);
+		if (w)
+		printf("l: Licensed %i mobs to lvl %i\n",num,b2);
+	printf("l: License Level Summary: %i?\n",sum);
+		//  of master obtained for
+		//printf("m: master license obtained for %i mobs\n",num);
+	}
+	
+	void hnrs(char w)
+	{
+		fseek(save, adr_mp, SEEK_SET);
+		DWORD num = ReadDword(save);
+		if (num<1) {printf("h: Honors: N/A (no crew)");return;}
+		fseek(save, 20, SEEK_CUR);
+		short h=0;DWORD i;
+		if (w)
+		{			
+			//printf("%s\n","how many Honors you want?"); 			
+			printf("%s","!: Input Honors Number : ");  //(0-65535)
+			scanf("%hu", &h);
+			/*
+			while (1)
+			{
+			scanf("%i", &i);
+			printf("%i",i);
+			if (i*(i-65535)<0) {h=(short)i;break;}
+			}
+			*/
+		}
+		for (byte b = 0;b<num;b++)
+		{
+			if (!w)
+			{freadE(&h, 2, 1, save, PC);break;}
+		for (byte b1 = 0;b1<12;b1++)
+		{
+			fwriteE(&h, 2, 1, save, PC);
+		}
+		fseek(save, 20, SEEK_CUR);
+		}		
+		printf("h: Honors: %hu\n", h);
+	}
+	byte exp1_on = 0;
+	void exp1(char w)
+	{
+		byte on=exp1_on,b1;
+		fseek(save, adr_mp+4, SEEK_SET);		
+		if (w) {on = !on;b1 = on ? 1 : 0;}
+		for (byte b = 0;b<20;b++)
+		{
+			if (w)
+			{
+				fwrite(&b1, 1, 1, save);
+			}
+			else
+			{
+				fread(&b1, 1, 1, save);
+				on = b1 == 1;
+				if (!on) break;//{on = 0;break;}
+			}			
+		}
+		printf("%s%s\n","x: TC & Experimental flags: ",on?"ON":"OFF"); //  unknown near TC 
+		exp1_on = on;
+	}
+	
+	DWORD crw_sz_pos=0;
+	
+	byte crw_sz_pos_get()
+	{
+		DWORD b1 = fscandw(0xB604DD4,save,adr_mp-0x3E5C+0x7F00,0x200,PC); 
+		// D4 4D 60 0B
+		if (!b1) {return 0;}
+		crw_sz_pos = b1+16;
+		return 1;
+	}
+	/*
+	byte spec_get()
+	{
+		DWORD b1 = fscandw(0xB604DD4,save,adr_mp-0x3E5C+0x7F00,0x200,PC); 
+		// D4 4D 60 0B
+		if (!b1) {return 0;}
+		crw_sz_pos = b1+16;
+		return 1;
+	}
+	*/
+	void crw_sz(byte w)
+	{
+		if (!crw_sz_pos) 
+			if (!crw_sz_pos_get()) return;
+		fseek(save, crw_sz_pos, SEEK_SET);
+		DWORD crw_sz;
+		if (!w)
+		{
+			freadE(&crw_sz, 4, 1, save, PC);
+		}
+		else
+		{
+			printf("!: Input Family Slots (0-8). * to cancel. \n");
+			//char c = getch();
+			while (1)
+			{
+				char c = getch();
+				if (c == '*') return;
+			crw_sz = c -'0';
+			if (crw_sz>=0&&crw_sz<=8) break;
+			}
+			// todo: input crew size (to free)
+			fwriteE(&crw_sz, 4, 1, save, PC);
+		}
+		printf("f: Family Slots: %i.\n",crw_sz);
+	}
+	
+	void spec(byte w)
+	{
+		if (!crw_sz_pos) 
+			if (!crw_sz_pos_get()) return;
+		fseek(save, crw_sz_pos, SEEK_SET);
+		DWORD crw_sz,dw1=0xFC;
+		freadE(&crw_sz, 4, 1, save, PC);
+		fseek(save, 0xD0, SEEK_CUR);
+		for (byte b = 0;b<crw_sz;b++)
+		{
+			fwriteE(&dw1, 4, 1, save,PC);
+			fseek(save, 0x50-4, SEEK_CUR);
+		}
+		printf("s: Multi Spec: ON\n");
+	}
+
+void weps(byte w)
+{
+		printf("w: ");
+
+	fseek(save, adr_mp, SEEK_SET);
+	DWORD num = ReadDword(save),tmp,val,i=0,dw1=0xEA,
+	// values dumped with CE's $luacode
+	dwar[] = {0x52631AAB, 0x3B9DCEA, 0xB5109F29, 0x59BFB800, 0xB167A3F, 0xBC6D3C7E, 0xDAF669BC, 0x8C4D2BFB, 0x3DA3EE3A, 0x214B0EEE, 0xD2A1D12D, 0x83F8936C, 0x3B3317A9, 0xEC89D9E8, 0x9DE09C27, 0x52631AAB, 0x3B9DCEA, 0xB5109F29, 0x59BFB800, 0xB167A3F, 0xBC6D3C7E, 0xDAF669BC, 0x8C4D2BFB, 0x3DA3EE3A, 0x214B0EEE, 0xD2A1D12D, 0x83F8936C, 0x3B3317A9, 0xEC89D9E8, 0x9DE09C27, 0};
+	;
+	fseek(save, 20+(6*4+16+4)*num, SEEK_CUR);
+	//byte b1 = PC ? 0 : 3,b2 = 0xEA;
+	while (1)
+	{
+	//printf("%x:",ftell(save));
+	freadE(&tmp, 4, 1, save,PC);
+	if (tmp == 0xA8896ED8) {printf("%X:b ",ftell(save)-4);break;}
+	freadE(&val, 4, 1, save,PC);
+	//printf("%x ",tmp);
+	//printf("%x:%x ",ftell(save)-4,tmp);
+	if (val != 0)// || val == 1 || (float)val == 1.0) 
+		continue;
+	
+	//printf("%x:%x ",ftell(save),tmp);	
+	//printf("%x:",ftell(save));
+	//freadE(&tmp, 4, 1, save,PC);
+	//printf("%x ",tmp);
+	//printf("%x:%x ",ftell(save)-4,tmp);
+	byte j=0;
+	for (byte b = 0;b<100;b++) 
+	{
+		DWORD buf = dwar[b];
+		if (buf==0) break;
+		if (tmp == buf) {
+			printf("%X:%X ",ftell(save)-4,buf);
+			j = 1;
+			break;
+		}
+	}
+	//if (tmp != 0) continue;
+	if (!j) continue;
+	fseek(save, -4, SEEK_CUR);
+	//printf("%x: ",ftell(save));
+	//fseek(save, b1, SEEK_CUR);
+	//printf("%x:w ",ftell(save));
+	//fseek(save, +4, SEEK_CUR);
+	fwriteE(&dw1, 4, 1, save,PC);
+	//fseek(save, 4-b1-1, SEEK_CUR);
+	i++;
+	getch();
+	}
+	printf("uw: filled %i vars\n",i);
+}
+
+    name_io(0);
+    bd_io(0);
+    money_io(0);
+	tc_io(0);
+	crw_sz(0);
+    if (bdt) bd_io(1);
+	lic(0);
+	//printf("l: Licenses\n");
+	hnrs(0);
+	//printf("h: Honors\n");
+	//printf("x: Experimental\n");
+	exp1(0);
+
+	
+    if (ui) 
+     {
+    printf("\n!: Input letter to edit. * when don`.\n\n");
+	// literal \n l for license \n 'Enter' to Exit. 
+
+    while (1)
+    {
+        char b1 = getch();
+        if (b1 == '*') break;
+        if (b1 == 'n') name_io(1); 
+        if (b1 == 'b') bd_io(1);
+        if (b1 == 't') tc_io(1);
+        if (b1 == 'm') money_io(1);
+		if (b1 == 'l') lic(1);
+		if (b1 == 'x') exp1(1);
+		if (b1 == 'h') hnrs(1);
+		if (b1 == 'f') crw_sz(1);
+		if (b1 == 'w') weps(1);
+		if (b1 == 's') spec(1);
+    }
+	 }
+    fflush(save);    
+printf("\n%s\n","Don` GF2 editing. Saved.\n");
+fclose(save);
+}
+
+byte s3; 
+
+void info()
+{
+		/*
+	printf("\n%s\n%s\n%s\n%s\n",
+"Godfather 2 Save Editor",
+"Supports both PC and consoles",
+"Thanks to TheMobster777 and Pandubreak",
+"https://github.com/r3sus/ds1savefix");	
+*/
+	
+	printf("\n\
+\n_ Godfather 2 Save Editor\
+\nSupports both PC and consoles\
+\nhttps://github.com/r3sus/ds1savefix\
+\nDedicated to TheMobster777.\nThanks to Pandubreak. \
+\nTools used: Beyond Compare;Cheat Engine;010 Editor.\
+\n\n");	
+Pause();
+printf("_ Usage options:\nLaunch exe or \nDrag and drop save on exe or \ncmd: mc02_fixer savePath \n\n");
+//[options]\nOptions: b - beta dom, q - quiet fix
+//, l - license
+}
+
+// checks, GetPlatform
+int intro(int argc, char *argv[]) 
+{
+
+// 
+
+	/*
+	else
+    {
+		printf("Drag and drop save file here (or paste path): ");
+        path = malloc(255);
+		scanf("%s",path);
+		//gets(path);
+		//scanf("%[^\n]%*c", path);
+		//printf("%s",path);
+    }
+	*/
+	
+    FILE *save = NULL;
+	if (path) 
+	{
+		//printf("path: %s\n",path);
+		save = fopen(path, "rb+");
+	}
+	//printf("path: %s\n",path);
+	byte b1 = 1;
+    while (!save) 
+    {
+		//printf("path: %s\n",path);
+		if (b1) {path = malloc(255);
+        printf("Drag and drop save file here (or paste path): ");
+		b1=0;
+		}
+		else
+		printf(" not exists. Try again (* to exit). ");
+	gets(path);
+	if (path[0]=='*') {//printf(" Exiting.");
+	return -1;}
+	if (sscanf(path,"%[^\"]",path))
+		{
+				printf("1: ");
+		}
+		else if (sscanf(path,"\"%[^\"]\"",path))
+			{
+				printf("2: ");
+			}
+			else continue;
+	/*
+		if (sscanf(path,"%[^\"]",path))
+			if (!sscanf(path,"\"%[^\"]\"",path));
+				continue;
+				*/
+		printf("path: %s\n",path);
+		//gets(path);
+		
+		save = fopen(path, "rb+");
+    }
+
+	printf("\nFile: \n'%s'\n\n",path);	
+	
+    DWORD temp; 
+    fread(&temp, 4, 1, save);
+    if (temp == 0x484D4752) {base = 0x2834; PC=1;} 
+    else if (temp == 0x204E4F43) base = 0xD000; // "CON "
+    else if (temp == 0xB000000) base = -0x130; // S3    
+	else 
+	{
+        printf("unsupported sig %X\n",temp);
+        Pause();
+        return -1;	
+	}
+	fclose(save);
+	
+	return 1;
+}
+
+int args(int argc, char *argv[])
+{   
+    if (argc >= 2)
+	{	
+		path = argv[1];
+	}
+	
+    if (argc==3) 
+    {
+        ui = 0>0;
+        char *str = argv[2];
+        for (byte b=0;b<sizeof(str);b++)
+        {
+        char arg = str[b]; 
+        if (arg == 'b') bdt = 1;
+        if (arg == 'q') qod = 1;
+        //if (arg == 'l') lo = 1;
+        }
+    //printf("%s\n",str);
+    //bdt = argv[2][0]=='b';
+    }
+}
+
+void Exit()
+{
+	printf("Exiting\n");
+	Pause();
+}
+
+void bak(int argc, char *argv[])
+{
+	//CopyFile(argv[1],strcat(argv[1],".copy"),FALSE);
+}
+
+int main(int argc, char *argv[])
+{
+args(argc,argv);
+info();
+if (!qod) Pause();
+while (1)
+{
+while (intro(argc,argv)!=1) {//printf("err\n");
+if (path[0]=='*') {Exit();//printf(" Exiting.");
+return -1;}
+}//return 0;}
+//bak(argc,argv);
+gf2se(argc,argv);
+mc02(argc,argv);
+printf("All done, enjoy!\n");
+Pause();
+printf("!: Input\n s - operate same save again.\n n - new. \n * - exit.\n");
+while (1)
+{
+	char c = getch();
+	if (c=='*') return 1;
+	if (c=='s') break;
+	if (c=='n') {free(path);//path[0]=0;
+	break;}
+}
+//strcpy(path,"");
+}
 }
